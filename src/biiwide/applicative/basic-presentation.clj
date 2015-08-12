@@ -193,7 +193,7 @@
        (pos? x)))
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/pos-number?</span>","value":"#'biiwide.applicative.basic/pos-number?"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/pos-number?</span>","value":"#'biiwide.applicative.basic-presentation/pos-number?"}
 ;; <=
 
 ;; **
@@ -236,7 +236,7 @@
            50)})
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/make-query-easy</span>","value":"#'biiwide.applicative.basic/make-query-easy"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/make-query-easy</span>","value":"#'biiwide.applicative.basic-presentation/make-query-easy"}
 ;; <=
 
 ;; **
@@ -309,7 +309,7 @@
   )
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/make-query-better</span>","value":"#'biiwide.applicative.basic/make-query-better"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/make-query-better</span>","value":"#'biiwide.applicative.basic-presentation/make-query-better"}
 ;; <=
 
 ;; **
@@ -469,7 +469,7 @@
     ))
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/-&gt;transform-v1</span>","value":"#'biiwide.applicative.basic/->transform-v1"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/-&gt;transform-v1</span>","value":"#'biiwide.applicative.basic-presentation/->transform-v1"}
 ;; <=
 
 ;; **
@@ -553,7 +553,7 @@
     ))
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/-&gt;transform-v2</span>","value":"#'biiwide.applicative.basic/->transform-v2"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/-&gt;transform-v2</span>","value":"#'biiwide.applicative.basic-presentation/->transform-v2"}
 ;; <=
 
 ;; **
@@ -572,6 +572,9 @@
 ((fconj-some inc)
  ["a"] 0)
 ;; @@
+;; =>
+;;; {"type":"list-like","open":"<span class='clj-vector'>[</span>","close":"<span class='clj-vector'>]</span>","separator":" ","items":[{"type":"html","content":"<span class='clj-string'>&quot;a&quot;</span>","value":"\"a\""},{"type":"html","content":"<span class='clj-long'>1</span>","value":"1"}],"value":"[\"a\" 1]"}
+;; <=
 
 ;; @@
 ((accumulate [] (map fconj-some [:one :two :three]))
@@ -715,7 +718,7 @@
     ))
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/-&gt;transform</span>","value":"#'biiwide.applicative.basic/->transform"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/-&gt;transform</span>","value":"#'biiwide.applicative.basic-presentation/->transform"}
 ;; <=
 
 ;; @@
@@ -805,7 +808,7 @@
            v))))))
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/guard</span>","value":"#'biiwide.applicative.basic/guard"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/guard</span>","value":"#'biiwide.applicative.basic-presentation/guard"}
 ;; <=
 
 ;; @@
@@ -858,7 +861,7 @@
   (when-not arg true))
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/not-f</span>","value":"#'biiwide.applicative.basic/not-f"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/not-f</span>","value":"#'biiwide.applicative.basic-presentation/not-f"}
 ;; <=
 
 ;; **
@@ -874,7 +877,7 @@
   (guard (every-pred number? pos?)))
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/pos-number?</span>","value":"#'biiwide.applicative.basic/pos-number?"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic-presentation/pos-number?</span>","value":"#'biiwide.applicative.basic-presentation/pos-number?"}
 ;; <=
 
 ;; **
