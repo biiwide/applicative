@@ -1,13 +1,15 @@
-;; gorilla-repl.fileformat = 1
+;   Copyright (c) Theodore Cushman and contributors.
+;   All rights reserved.
+;   The use and distribution terms for this software are covered by the
+;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
+;   which can be found in the file epl-v10.html at the root of this distribution.
+;   By using this software in any fashion, you are agreeing to be bound by
+;   the terms of this license.
+;   You must not remove this notice, or any other, from this software.
 
-;; @@
+
 (ns biiwide.applicative.basic)
-;; @@
-;; =>
-;;; {"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}
-;; <=
 
-;; @@
 (defn fconj-some
   [f]
   (fn [result arg]
@@ -28,12 +30,6 @@
     (not-empty
       (reduce (fn [result f] (f result arg))
               seed f's))))
-;; @@
-;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/accumulate</span>","value":"#'biiwide.applicative.basic/accumulate"}
-;; <=
-
-;; @@
 
 (defn ->transform
   [x]
@@ -88,12 +84,7 @@
        (let [v (f arg)]
          (when (pred v)
            v))))))
-;; @@
-;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/guard</span>","value":"#'biiwide.applicative.basic/guard"}
-;; <=
 
-;; @@
 (defn and-f
   [& args]
   (when-let [[a & more-as] (not-empty args)]
@@ -111,24 +102,14 @@
 (defn not-f
   [arg]
   (when-not arg true))
-;; @@
-;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/not-f</span>","value":"#'biiwide.applicative.basic/not-f"}
-;; <=
 
-;; @@
 (defn default
   [v f]
   (lift or-f f v))
 
 (def pos-number?
   (guard (every-pred number? pos?)))
-;; @@
-;; =>
-;;; {"type":"html","content":"<span class='clj-var'>#&#x27;biiwide.applicative.basic/pos-number?</span>","value":"#'biiwide.applicative.basic/pos-number?"}
-;; <=
 
-;; @@
 (def build-query-with-defaults
   (->transform
     {:query {:bool {:must [{:match {:first_name :first-name}}
@@ -144,17 +125,3 @@
   {:first-name "Joe"
    :after "2014-01-01"
    :from 30})
-
-(clojure.pprint/pp)
-;; @@
-;; ->
-;;; {:size 30,
-;;;  :from 30,
-;;;  :query
-;;;  {:bool
-;;;   {:must [{:match {:first_name &quot;Joe&quot;}} {:range {:gt &quot;2014-01-01&quot;}}]}}}
-;;; 
-;; <-
-;; =>
-;;; {"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}
-;; <=
