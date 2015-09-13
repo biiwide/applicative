@@ -164,7 +164,7 @@ Example:
        odd? inc
        pos? (*a 2)
        0)"
-  ([expr] expr)
+  ([expr] (->transform expr))
   ([pred-expr expr]
     (whena pred-expr expr))
   ([pred-expr expr & more-pred-expr-pairs]
@@ -225,9 +225,9 @@ In other words:
   ([f] (lift* f))
   ([f expr] (lift* f (list expr))))
 
-(def *a   "Lifted applicative form of *" (lift *))
 (def +a   "Lifted applicative form of +" (lift +))
 (def -a   "Lifted applicative form of -" (lift -))
+(def *a   "Lifted applicative form of *" (lift *))
 (def diva "Lifted applicative form of /" (lift /))
 
 (def consa (lift (fn [a b] (cons b a))))
