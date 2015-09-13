@@ -7,22 +7,13 @@
 ;   the terms of this license.
 ;   You must not remove this notice, or any other, from this software.
 
-(ns biiwide.applicative.data
-  (:refer-clojure :exclude [-> = * + - / > >= < <=
-                            some->
-                            and or not
-                            integer? float? number?
-                            ratio? rational? string?
-                            filter filterv
-                            map mapv remove
-                            when when-not])
-  (:require [clojure.core :as core]))
+(ns biiwide.applicative.data)
 
 (defn- fconj-some
   [f]
   (fn [result arg]
     (if-some [v (f arg)]
-      (core/conj result v)
+      (conj result v)
       result)))
 
 (defn constant [x]
@@ -35,7 +26,7 @@
 (def always-nil (constant nil))
 
 (defn always-nil? [x]
-  (core/= always-nil x))
+  (= always-nil x))
 
 (def always-true (constant true))
 
@@ -53,7 +44,7 @@
     (not-empty
       (loop [result seed
              f's f's]
-        (if (core/nil? f's)
+        (if (nil? f's)
           result
           (let [[f & more-fs] f's]
             (recur (f result arg) more-fs)))))))
@@ -66,12 +57,12 @@ collections of functions and primitive values"
   (letfn [(->transform-pair [[k v]]
             (pair k (->transform v)))
           (->transform-coll [seed transform-item x]
-            (let [parts (core/remove always-nil?
-                          (core/map transform-item x))]
+            (let [parts (remove always-nil?
+                          (map transform-item x))]
               (if (empty? parts)
                 always-nil
                 (let [accumulator (accumulate seed
-                                    (core/mapv fconj-some parts))]
+                                    (mapv fconj-some parts))]
                   (if (every? constant? parts)
                     (constant (accumulator nil))
                     accumulator)))))]
@@ -92,38 +83,39 @@ collections of functions and primitive values"
       (seq? x)      (->transform-coll nil ->transform x)
 
       ;; If x is nil, return the constant, static always-nil
-      (core/nil? x) always-nil
+      (nil? x) always-nil
 
       ;; Otherwise, return a constant function of x
       :else         (constant x)
       )))
 
 
-(defn ->
+(defn ->a
   "Compose a series of expressions left-to-right."
   [& exprs]
-  (core/reduce core/comp
-    (core/reverse (core/map ->transform exprs))))
+  (reduce comp
+    (reverse (map ->transform exprs))))
 
-(defn some->
+(defn some->a
   "Compose a series of expressions from left to right that
 will abort when one expression returns nil"
   [& exprs]
-  (core/reduce (fn [f1 f2]
+  (reduce (fn [f1 f2]
                  (fn [arg]
-                   (core/when (some? arg)
-                     (core/when-some [v (f1 arg)]
+                   (when (some? arg)
+                     (when-some [v (f1 arg)]
                        (f2 v)))))
-    (core/map ->transform exprs)))
+    (map ->transform exprs)))
 
-(defn or
+(defn ora
   "Constructs a function that returns either the first
 truthy result from applying each expressions to the same
 argument or nil if no truthy results where returned."
-  [& exprs]
-  (apply some-fn (core/map ->transform exprs)))
+  ([] always-nil)
+  ([& exprs]
+    (apply some-fn (map ->transform exprs))))
 
-(defn and
+(defn anda
   "Constructs a function that returns either the first
 falsey result from applying each expressions to the same
 argument or the last truthy result if all results where
@@ -134,71 +126,86 @@ truthy."
     (let [f1 (->transform expr1)
           f2 (->transform expr2)]
       (fn [arg]
-        (core/and (f1 arg) (f2 arg)))))
+        (and (f1 arg) (f2 arg)))))
   ([expr1 expr2 & more-exprs]
-    (core/reduce and
-      expr1 (core/cons expr2 more-exprs))))
+    (reduce anda
+      expr1 (cons expr2 more-exprs))))
 
-(defn not
+(defn nota
   "Construct a function that returns the boolean complement
 of the expression."
   [expr]
   (complement (->transform expr)))
 
-(defn when
+(defn whena
   "When pred-expr returns truthy value for the argument
 then apply expr to the argument."
   [pred-expr expr]
   (let [p (->transform pred-expr)
         f (->transform expr)]
     (fn [arg]
-      (core/when (p arg)
+      (when (p arg)
         (f arg)))))
 
-(defn when-not
+(defn when-nota
   "When pred-expr does not return a truthy value for
-the argument then apply expr to the argument."
+the argument then apply expr to the argument.
+
+(when-nota pos? (*a -1))"
   [pred-expr expr]
-  (when (not pred-expr) expr))
+  (whena (nota pred-expr) expr))
 
+(defn conda
+  "Test a value with a seriese of applicative expressions.
+When an expression matches apply the corresponding applicative
+expression to the original value.
+Example:
+(conda neg? 0
+       odd? inc
+       pos? (*a 2)
+       0)"
+  ([expr] expr)
+  ([pred-expr expr]
+    (whena pred-expr expr))
+  ([pred-expr expr & more-pred-expr-pairs]
+    (apply ora
+      (cons (whena pred-expr expr)
+        (map (partial apply conda)
+          (partition-all 2 more-pred-expr-pairs))))))
+  
 
-(defn- lift-fn
-  "Convert a function of n arguments into a function of
-one argument and produce each argument to the original
-function by applying the corresponding positional
-transformation to the outer argument."
-  ([f]
-    (partial lift-fn f))
-  ([f arg-expr]
-    (let [arg-f (->transform arg-expr)]
-      (fn [arg] (f (arg-f arg)))))
-  ([f arg-expr1 arg-expr2]
-    (let [arg-f1 (->transform arg-expr1)
-          arg-f2 (->transform arg-expr2)]
-      (fn [arg]
-        (f (arg-f1 arg) (arg-f2 arg)))))
-  ([f arg-expr1 arg-expr2 arg-expr3]
-    (let [arg-f1 (->transform arg-expr1)
-          arg-f2 (->transform arg-expr2)
-          arg-f3 (->transform arg-expr3)]
-      (fn [arg]
-        (f (arg-f1 arg) (arg-f2 arg) (arg-f3 arg)))))
-  ([f arg-expr1 arg-expr2 arg-expr3 & arg-exprs]
-   (let [arg-fs (core/mapv ->transform
-                  (core/list* arg-expr1 arg-expr2 arg-expr3 arg-exprs))]
-     (fn [arg]
-       (apply f (for [af arg-fs] (af arg)))))))
+(defprotocol Liftable
+  (lift* [x] [x arg-exprs-coll]))
 
-(defn- lift-sym
-  ([f]
-    (partial lift-sym))
-  ([f & arg-exprs]
-    (let [f's (core/map ->transform arg-exprs)]
-      (eval `(fn [~'arg]
-               (~f ~@(core/map #(core/list % 'arg) f's)))))))
+(extend clojure.lang.Fn
+  Liftable
+  {:lift* (fn self
+            ([f] (partial self f))
+            ([f arg-exprs-coll]
+              (let [arg-fs (map ->transform arg-exprs-coll)]
+                (case (count arg-fs)
+                  1 (let [[arg-f] arg-fs]
+                      (fn [arg] (f (arg-f arg))))
+                  2 (let [[arg-f1 arg-f2] arg-fs]
+                      (fn [arg]
+                        (f (arg-f1 arg) (arg-f2 arg))))
+                  3 (let [[arg-f1 arg-f2 arg-f3] arg-fs]
+                      (fn [arg]
+                        (f (arg-f1 arg) (arg-f2 arg) (arg-f3 arg))))
+                  (fn [arg]
+                    (apply f (for [af arg-fs] (af arg))))))))})
+
+(extend clojure.lang.Symbol
+  Liftable
+  {:lift* (fn self
+            ([s] (partial self s))
+            ([s arg-exprs-coll]
+              (let [f's (map ->transform arg-exprs-coll)]
+                (eval `(fn [~'arg]
+                         (~s ~@(map #(list % 'arg) f's)))))))})
 
 (defn lift
-  "Lift a function of any number of arguments into a function
+  "Lift a function of two or more arguments into a function
 of one argument where each argument to the original function is
 obtained by applying the single argument to each argument-expression.
 
@@ -206,48 +213,63 @@ In other words:
   (lift f expr1 expr2)
   => (fn [arg] (f ((->transform expr1) arg)
                   ((->transform expr2) arg)))"
-  [f-or-sym & arg-exprs]
-  (cond (symbol? f-or-sym)
-        (apply lift-sym f-or-sym arg-exprs)
-        :else
-        (apply lift-fn f-or-sym arg-exprs)))
+  ([f-or-sym]
+    (partial lift f-or-sym))
+  ([f-or-sym expr]
+    (lift* f-or-sym [identity expr]))
+  ([f-or-sym expr & more-exprs]
+    (lift* f-or-sym (cons expr more-exprs))))
 
-(def * "Lifted form of clojure.core/*" (lift core/*))
-(def + "Lifted form of clojure.core/+" (lift core/+))
-(def / "Lifted form of clojure.core//" (lift core//))
-(def - "Lifted form of clojure.core/-" (lift core/-))
+(defn unary-lift
+  "Lift a function of one argument into a function of"
+  ([f] (lift* f))
+  ([f expr] (lift* f (list expr))))
 
+(def *a   "Lifted applicative form of *" (lift *))
+(def +a   "Lifted applicative form of +" (lift +))
+(def -a   "Lifted applicative form of -" (lift -))
+(def diva "Lifted applicative form of /" (lift /))
+
+(def consa (lift (fn [a b] (cons b a))))
+(def conja (lift conj))
+
+(defn assoca
+  ([key expr]
+    (let [arg-f (->transform expr)]
+      (fconj-some (pair key (->transform expr)))))
+  ([key expr & more-key-expr-pairs]
+    (->a (assoca key expr)
+         (apply assoca more-key-expr-pairs))))
 
 (defn guard
   "Given a unary predicate function, returns a function which
 returns it's argument if it satisfies the predicate"
   ([pred]
-    (fn [arg]
-      (core/when (pred arg) arg)))
+    (whena pred identity))
   ([pred expr]
-    (guard (-> expr pred))))
+    (guard (->a expr pred))))
 
-(defn binary-guard
+(defn guardn
   "Constructs a guard function using predicate of two or more arguments.
-[pred constant]: A guard of the predicate curried with the constant.
+[pred constant]: A guard of the predicate curried with a constant.
 [pred expr1 expr2 ...]: A guard of the predicate lifted with the expression arugments."
   ([pred expr1 expr2 & more-exprs]
-    (apply (binary-guard pred) expr1 expr2 more-exprs))
+    (apply (guardn pred) expr1 expr2 more-exprs))
   ([pred constant]
-    ((binary-guard pred) constant))
+    ((guardn pred) constant))
   ([pred]
     (fn ([constant]
-          (guard (partial pred constant)))
+          (guard (lift pred constant)))
         ([expr1 expr2]
           (guard (lift pred expr1 expr2)))
         ([expr1 expr2 & more-exprs]
           (guard (apply lift pred expr1 expr2 more-exprs))))))
 
-(def =  "Binary guard using clojure.core/="  (binary-guard core/=))
-(def <  "Binary-guard using clojure.core/<"  (binary-guard core/<))
-(def >  "Binary-guard using clojure.core/>"  (binary-guard core/>))
-(def <= "Binary-guard using clojure.core/<=" (binary-guard core/<=))
-(def >= "Binary-guard using clojure.core/>=" (binary-guard core/>=))
+(def =a  "Guard using ="  (guardn =))
+(def <a  "Guard using <"  (guardn <))
+(def >a  "Guard using >"  (guardn >))
+(def <=a "Guard using <=" (guardn <=))
+(def >=a "Guard using >=" (guardn >=))
 
 
 (defn- lift-fa
@@ -260,45 +282,74 @@ returns it's argument if it satisfies the predicate"
         (fn [arg]
           (core-f f arg))))
     ([f-expr arg-expr]
-      (-> arg-expr (self f-expr)))))
+      (->a arg-expr (self f-expr)))))
 
 (defn something?
   "Returns true when 'x is not nil or an empty collection"
   [x]
-  (core/not
-    (core/or (core/nil? x)
-             (core/and (core/coll? x)
-                       (core/empty? x)))))
+  (not
+    (or (nil? x)
+        (and (coll? x)
+             (empty? x)))))
 
-(defn- filtered [filter-f seq-f]
-  (fn [f coll]
-    (core/not-empty
-      (filter-f something?
-        (seq-f f coll)))))
+(letfn [(filtered [filter-f seq-f]
+          (fn [f coll]
+            (not-empty
+              (filter-f something?
+                (seq-f f coll)))))]
 
-(def map     (lift-fa (filtered core/filter  core/map)))
-(def mapv    (lift-fa (filtered core/filterv core/mapv)))
-(def filter  (lift-fa (filtered core/filter  core/filter)))
-(def filterv (lift-fa (filtered core/filterv core/filterv)))
-(def remove  (lift-fa (filtered core/filter  core/remove)))
-(def removev (lift-fa (filtered core/filterv core/remove)))
+  (def mapa
+    "Map an applicative expression over the results of another expression.
+All nils or empty collections will be pruned from the result."
+    (lift-fa (filtered filter  map)))
+
+  (def mapav
+    "Map an applicative expression over the results of another expression,
+and return the results in a vector.
+All nils or empty collections will be pruned from the result."
+    (lift-fa (filtered filterv mapv)))
+
+  (def filtera
+    "Filter the results of an applicative expression with an
+applicative expression.
+All nils or empty collections will be pruned from the result."
+    (lift-fa (filtered filter  filter)))
+
+  (def filterav
+    "Filter the results of an applicative expression with an
+applicative expression, and returns a vector.
+All nils or empty collections will be pruned from the result."
+    (lift-fa (filtered filterv filterv)))
+
+  (def removea
+    "Remove the results of an applicative expression with an
+applicative expression.
+All nils or empty collections will be pruned from the result."
+    (lift-fa (filtered filter  remove)))
+
+  (def removeav
+    "Remove the results of an applicative expression with an
+applicative expression, and returns a vector.
+All nils or empty collections will be pruned from the result."
+    (lift-fa (filtered filterv remove)))
+  )
 
 
-(defn default
+(defn defaulta
   "Apply expr, return default-value if expr returns false or nil"
   [default-value expr]
-  (or expr (constant default-value)))
+  (ora expr (constant default-value)))
 
-(defn between
+(defn betweena
   "Constrain a numeric value between two limits. 
 Both the upper and lower limits are inclusive.
 If no default-value is provided, use the first
 limit."
   ([limit-a limit-b default-value expr]
-    (default default-value
+    (defaulta default-value
       (-> expr
-          (and core/number?
-               (<= (core/max limit-a limit-b))
-               (>= (core/min limit-a limit-b))))))
+          (anda number?
+                (<=a (max limit-a limit-b))
+                (>=a (min limit-a limit-b))))))
   ([limit-a limit-b expr]
-    (between limit-a limit-b limit-a expr)))
+    (betweena limit-a limit-b limit-a expr)))
