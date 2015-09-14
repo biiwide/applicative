@@ -353,3 +353,19 @@ limit."
                 (>=a (min limit-a limit-b))))))
   ([limit-a limit-b expr]
     (betweena limit-a limit-b limit-a expr)))
+
+(defn geta
+  "Lookup a key in an associative collection"
+  [k]
+  (fn [arg]
+    (get arg k)))
+
+(defn selecta
+  "Returns a map containing only the specified keys"
+  [& keys]
+  (->transform (zipmap keys (map geta keys))))
+
+(defn withouta
+  "Dissociate a group of keys from an associative collecion"
+  [& keys]
+  (apply lift dissoc identity keys))

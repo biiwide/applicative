@@ -14,26 +14,28 @@
             [clojure.test.check.generators :as g :refer [one-of]]
             [clojure.test.check.properties :refer [for-all]]))
 
-(def constant-primitive-types
+(def constant-primitives
   (one-of [g/int g/char g/string g/ratio g/boolean]))
 
-(def constant-collection-types
-  (one-of [(g/vector constant-primitive-types)
-           (g/list   constant-primitive-types)
-           (g/map    constant-primitive-types constant-primitive-types)]))
+(def constant-collections
+  (one-of [(g/vector constant-primitives)
+           (g/list   constant-primitives)
+           (g/map    (g/one-of [constant-primitives
+                                g/keyword])
+                     constant-primitives)]))
 
-(def constant-types
-  (one-of [constant-primitive-types
-           constant-collection-types
+(def constants
+  (one-of [constant-primitives
+           constant-collections
            (g/recursive-gen
              (fn [gitem]
                (let [gcoll (rand-nth [g/vector g/list #(g/map % %)])]
                  (gcoll gitem)))
-             constant-primitive-types)]))
+             constant-primitives)]))
 
 (defspec constantly-constant 20
   (for-all [constant-val g/any
-                 arg-val      g/any]
+                 arg-val g/any]
     (let [constf (constant constant-val)]
       (= constant-val (constf arg-val)))))
 
@@ -49,8 +51,8 @@
     inc :keyword 'symbol))
 
 
-(defspec optimized-constants 100
-  (for-all [constant-val constant-types]
+(defspec optimized-constants 200
+  (for-all [constant-val constants]
     (constant? (->transform constant-val))))
 
 (defspec optimized-nils 100
@@ -88,7 +90,7 @@
      :double #(* 2 %)} 123 {:string "123" :double 246}
     ))
 
-(deftest test-and
+(deftest test-anda
   (are [exprs v expected]
     (= expected ((apply anda exprs) v))
 
@@ -125,7 +127,7 @@
     true
     ))
 
-(deftest test-or
+(deftest test-ora
   (are [exprs v expected]
     (= expected ((apply ora exprs) v))
 
@@ -170,7 +172,7 @@
     true
     ))
 
-(deftest test-not
+(deftest test-nota
   (are [expr v expected]
     (= expected ((nota expr) v))
 
@@ -186,7 +188,7 @@
     (constantly false) true    true
     ))
 
-(deftest test=
+(deftest test=a
   (are [pred expr data]
     (pred (expr data))
 
@@ -198,6 +200,10 @@
     nil?  (=a neg? pos?) -1
     nil?  (=a :a :b :c)  {:b "bbb"}
     nil?  (=a inc dec)   2
+
+    zero? (=a 0) 0
+    nil?  (=a "foo") 1
+    nil?  (=a "bar") ["bar"]
     ))
 
 (deftest test-compose-ltr
@@ -259,7 +265,7 @@
 (deftest test-conda
   (let [f (conda neg? 0
                  odd? (*a 2)
-                 pos? (*a 1/2)
+                 pos? (diva 2)
                  0)]
     (are [v expected]
       (= expected (f v))
@@ -271,3 +277,63 @@
        1 2
        6 3
        )))
+
+
+(deftest test-geta
+  (are [m k expected]
+    (= expected ((geta k) m))
+
+    nil "foo" nil
+
+    {} "foo" nil
+
+    {:foo "bar"}
+    "foo" nil
+
+    {:foo "bar"}
+    :foo "bar"
+
+    {"one" 1 "two" 2}
+    "one" 1
+    
+    {"one" 1 "two" 2}
+    "three" nil
+    
+    {"one" 1 "two" 2}
+    :one nil))
+
+(defspec selecta-spec
+  (let [keys ["one" "two" "three"]
+        sf (apply selecta keys)
+        k-gens (map g/return keys)]
+    (for-all [m (g/map
+                  (g/one-of (cons g/string-alphanumeric k-gens))
+                  g/int)]
+      (let [m' (sf m)]
+        (is (<= (count m') (count m)))
+        (is (>= 3 (count m')))
+        (is (= (not-empty (select-keys m' keys)) m'))))))
+
+(defspec withouta-spec
+  (let [keys ["one" "two" "three"]
+        wf (apply withouta keys)
+        k-gens (map g/return keys)
+        get-all-keys (->transform (map geta keys))]
+    (for-all [m (g/map
+                  (g/one-of (cons g/string-alphanumeric k-gens))
+                  g/int)]
+      (let [m' (wf m)]
+        (is (nil? (get-all-keys m')))))))
+
+(defspec betweena-spec 200
+  (let [lower -4
+        upper 5
+        bf (betweena upper lower identity)]
+    (for-all [x (g/one-of [g/int g/nat g/ratio
+                           g/string-alphanumeric
+                           g/keyword g/boolean
+                           g/any-printable])]
+      (let [n (bf x)]
+        (is (number? n))
+        (is (<= lower n))
+        (is (>= upper n))))))
