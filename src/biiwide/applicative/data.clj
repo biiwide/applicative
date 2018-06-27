@@ -7,32 +7,44 @@
 ;   the terms of this license.
 ;   You must not remove this notice, or any other, from this software.
 
-(ns biiwide.applicative.data)
+(ns biiwide.applicative.data
+  (:refer-clojure :exclude [constantly]))
 
-(defn- fconj-some
-  [f]
-  (fn [result arg]
-    (if-some [v (f arg)]
-      (conj result v)
-      result)))
+(defn conj-some
+  [coll v]
+  (if (some? v)
+    (conj coll v)
+    coll))
 
-(defn constant [x]
-  (vary-meta (constantly x)
+(defn- fconj
+  [conjoiner]
+  (fn [f]
+    (fn [result arg]
+      (conjoiner result (f arg)))))
+
+(def ^:private fconj-some
+  (fconj conj-some))
+
+(defn constantly [x]
+  (vary-meta (clojure.core/constantly x)
     assoc ::constant true))
+
+(def constant constantly)
 
 (defn constant? [x]
   (true? (::constant (meta x))))
 
-(def always-nil (constant nil))
+(def always-nil (constantly nil))
 
 (defn always-nil? [x]
   (= always-nil x))
 
-(def always-true (constant true))
+(def always-true (constantly true))
+
 
 (defn- pair [k f]
   (cond (always-nil? f) always-nil
-        (constant? f)   (constant [k (f nil)])
+        (constant? f)   (constantly [k (f nil)])
         :else
         (fn [arg]
           (when-some [v (f arg)]
@@ -41,60 +53,84 @@
 (defn- accumulate
   [seed f's]
   (fn [arg]
-    (not-empty
-      (loop [result seed
-             f's f's]
-        (if (nil? f's)
-          result
-          (let [[f & more-fs] f's]
-            (recur (f result arg) more-fs)))))))
+    (loop [result seed
+           f's f's]
+      (if (nil? f's)
+        result
+        (let [[f & more-fs] f's]
+          (recur (f result arg) more-fs))))))
 
-(defn ->transform
+
+(defn transformation-builder
+  [conjoiner]
+  (let [fconjer (fconj conjoiner)]
+    (fn transformer [x]
+      (letfn [(pair-transformer [[k v]]
+                (pair k (transformer v)))
+              (coll-transformer [seed transformer x]
+                (let [parts (remove always-nil?
+                              (map transformer x))]
+                  (cond
+                    (empty? parts) always-nil
+                    (every? constant? parts) (constantly x)
+                    :else (comp not-empty
+                                (accumulate seed
+                                  (mapv fconjer parts))))))]
+        (cond
+          ;; If x is a function, directly return it.
+          (fn? x)       x
+
+          ;; If x is a map, recursively transform all values, and accumulate "assoc's".
+          (map? x)      (coll-transformer {} pair-transformer x)
+
+          ;; If x is a vector, recursively transform all elements
+          (vector? x)   (coll-transformer [] transformer x)
+
+          ;; If x is a set, recursively transform all elements
+          (set? x)      (coll-transformer #{} transformer x)
+
+          ;; If x can behave like a function, directly return it.
+          (ifn? x)      x
+
+          ;; If x is any other seq, reverse it and recursively transform all elements
+          (seq? x)      (coll-transformer nil transformer x)
+
+          ;; If x is nil, return the constant, static always-nil
+          (nil? x)      always-nil
+
+          ;; Otherwise, return a constant function of x
+          :else         (constantly x)
+          )))))
+
+
+(def transformer
   "Transforms an applicative expression into a function.
 Expressions may consist of functions, primitive values, and
 collections of functions and primitive values"
-  [x]
-  (letfn [(->transform-pair [[k v]]
-            (pair k (->transform v)))
-          (->transform-coll [seed transform-item x]
-            (let [parts (remove always-nil?
-                          (map transform-item x))]
-              (if (empty? parts)
-                always-nil
-                (let [accumulator (accumulate seed
-                                    (mapv fconj-some parts))]
-                  (if (every? constant? parts)
-                    (constant (accumulator nil))
-                    accumulator)))))]
-    (cond
-      ;; If x is a function, directly return it.
-      (fn? x)       x
+  (transformation-builder conj-some))
 
-      ;; If x is a map, recursively transform all values, and accumulate "assoc's".
-      (map? x)      (->transform-coll {} ->transform-pair x)
 
-      ;; If x is a vector, recursively transform all elements
-      (vector? x)   (->transform-coll [] ->transform x)
+(def transformer-with-nils
+  "Transforms an applicative expression into a function.
+Expressions may consist of functions, primitive values, and
+collections of functions and primitive values"
+  (transformation-builder conj))
 
-      ;; If x can behave like a function, directly return it.
-      (ifn? x)      x
 
-      ;; If x is any other seq, reverse it and recursively transform all elements
-      (seq? x)      (->transform-coll nil ->transform x)
+(def ^:dynamic *transformer*
+  transformer)
 
-      ;; If x is nil, return the constant, static always-nil
-      (nil? x) always-nil
 
-      ;; Otherwise, return a constant function of x
-      :else         (constant x)
-      )))
+(defmacro with-transformer [transformer-fn & body]
+  `(binding [*transformer* ~transformer-fn]
+     ~@body))
 
 
 (defn ->a
   "Compose a series of expressions left-to-right."
   [& exprs]
   (reduce comp
-    (reverse (map ->transform exprs))))
+    (reverse (map *transformer* exprs))))
 
 (defn some->a
   "Compose a series of expressions from left to right that
@@ -105,15 +141,16 @@ will abort when one expression returns nil"
                    (when (some? arg)
                      (when-some [v (f1 arg)]
                        (f2 v)))))
-    (map ->transform exprs)))
+    (map *transformer* exprs)))
 
 (defn ora
   "Constructs a function that returns either the first
 truthy result from applying each expressions to the same
 argument or nil if no truthy results where returned."
   ([] always-nil)
-  ([& exprs]
-    (apply some-fn (map ->transform exprs))))
+  ([expr] (*transformer* expr))
+  ([expr1 & exprs]
+    (apply some-fn (map *transformer* (cons expr1 exprs)))))
 
 (defn anda
   "Constructs a function that returns either the first
@@ -121,10 +158,10 @@ falsey result from applying each expressions to the same
 argument or the last truthy result if all results where
 truthy."
   ([] always-true)
-  ([expr] (->transform expr))
+  ([expr] (*transformer* expr))
   ([expr1 expr2]
-    (let [f1 (->transform expr1)
-          f2 (->transform expr2)]
+    (let [f1 (*transformer* expr1)
+          f2 (*transformer* expr2)]
       (fn [arg]
         (and (f1 arg) (f2 arg)))))
   ([expr1 expr2 & more-exprs]
@@ -135,14 +172,14 @@ truthy."
   "Construct a function that returns the boolean complement
 of the expression."
   [expr]
-  (complement (->transform expr)))
+  (complement (*transformer* expr)))
 
 (defn whena
   "When pred-expr returns truthy value for the argument
 then apply expr to the argument."
   [pred-expr expr]
-  (let [p (->transform pred-expr)
-        f (->transform expr)]
+  (let [p (*transformer* pred-expr)
+        f (*transformer* expr)]
     (fn [arg]
       (when (p arg)
         (f arg)))))
@@ -164,7 +201,7 @@ Example:
        odd? inc
        pos? (*a 2)
        0)"
-  ([expr] (->transform expr))
+  ([expr] (*transformer* expr))
   ([pred-expr expr]
     (whena pred-expr expr))
   ([pred-expr expr & more-pred-expr-pairs]
@@ -182,7 +219,7 @@ Example:
   {:lift* (fn self
             ([f] (partial self f))
             ([f arg-exprs-coll]
-              (let [arg-fs (map ->transform arg-exprs-coll)]
+              (let [arg-fs (map *transformer* arg-exprs-coll)]
                 (case (count arg-fs)
                   1 (let [[arg-f] arg-fs]
                       (fn [arg] (f (arg-f arg))))
@@ -200,7 +237,7 @@ Example:
   {:lift* (fn self
             ([s] (partial self s))
             ([s arg-exprs-coll]
-              (let [f's (map ->transform arg-exprs-coll)]
+              (let [f's (map *transformer* arg-exprs-coll)]
                 (eval `(fn [~'arg]
                          (~s ~@(map #(list % 'arg) f's)))))))})
 
@@ -211,8 +248,8 @@ obtained by applying the single argument to each argument-expression.
 
 In other words:
   (lift f expr1 expr2)
-  => (fn [arg] (f ((->transform expr1) arg)
-                  ((->transform expr2) arg)))"
+  => (fn [arg] (f ((transformer expr1) arg)
+                  ((transformer expr2) arg)))"
   ([f-or-sym]
     (partial lift f-or-sym))
   ([f-or-sym expr]
@@ -220,10 +257,12 @@ In other words:
   ([f-or-sym expr & more-exprs]
     (lift* f-or-sym (cons expr more-exprs))))
 
-(defn unary-lift
-  "Lift a function of one argument into a function of"
-  ([f] (lift* f))
-  ([f expr] (lift* f (list expr))))
+;(defn unary-lift
+;  ([f-or-sym]
+;    (partial unary-lift f-or-sym))
+;  ([f-or-sym expr]
+;    (lift* f-or-sym [expr])))
+
 
 (def +a   "Lifted applicative form of +" (lift +))
 (def -a   "Lifted applicative form of -" (lift -))
@@ -231,12 +270,13 @@ In other words:
 (def diva "Lifted applicative form of /" (lift /))
 
 (def consa (lift (fn [a b] (cons b a))))
+
 (def conja (lift conj))
 
 (defn assoca
   ([key expr]
-    (let [arg-f (->transform expr)]
-      (fconj-some (pair key (->transform expr)))))
+    (let [arg-f (*transformer* expr)]
+      (fconj-some (pair key (*transformer* expr)))))
   ([key expr & more-key-expr-pairs]
     (->a (assoca key expr)
          (apply assoca more-key-expr-pairs))))
@@ -278,7 +318,7 @@ returns it's argument if it satisfies the predicate"
   [core-f]
   (fn self
     ([f-expr]
-      (let [f (->transform f-expr)]
+      (let [f (*transformer* f-expr)]
         (fn [arg]
           (core-f f arg))))
     ([f-expr arg-expr]
@@ -303,7 +343,7 @@ returns it's argument if it satisfies the predicate"
 All nils or empty collections will be pruned from the result."
     (lift-fa (filtered filter  map)))
 
-  (def mapav
+  (def mapva
     "Map an applicative expression over the results of another expression,
 and return the results in a vector.
 All nils or empty collections will be pruned from the result."
@@ -315,7 +355,7 @@ applicative expression.
 All nils or empty collections will be pruned from the result."
     (lift-fa (filtered filter  filter)))
 
-  (def filterav
+  (def filterva
     "Filter the results of an applicative expression with an
 applicative expression, and returns a vector.
 All nils or empty collections will be pruned from the result."
@@ -327,7 +367,7 @@ applicative expression.
 All nils or empty collections will be pruned from the result."
     (lift-fa (filtered filter  remove)))
 
-  (def removeav
+  (def removeva
     "Remove the results of an applicative expression with an
 applicative expression, and returns a vector.
 All nils or empty collections will be pruned from the result."
@@ -338,7 +378,7 @@ All nils or empty collections will be pruned from the result."
 (defn defaulta
   "Apply expr, return default-value if expr returns false or nil"
   [default-value expr]
-  (ora expr (constant default-value)))
+  (ora expr (constantly default-value)))
 
 (defn betweena
   "Constrain a numeric value between two limits. 
@@ -347,10 +387,9 @@ If no default-value is provided, use the first
 limit."
   ([limit-a limit-b default-value expr]
     (defaulta default-value
-      (-> expr
-          (anda number?
-                (<=a (max limit-a limit-b))
-                (>=a (min limit-a limit-b))))))
+      (anda expr number?
+            (<=a (max limit-a limit-b))
+            (>=a (min limit-a limit-b)))))
   ([limit-a limit-b expr]
     (betweena limit-a limit-b limit-a expr)))
 
@@ -363,7 +402,7 @@ limit."
 (defn selecta
   "Returns a map containing only the specified keys"
   [& keys]
-  (->transform (zipmap keys (map geta keys))))
+  (*transformer* (zipmap keys (map geta keys))))
 
 (defn withouta
   "Dissociate a group of keys from an associative collecion"

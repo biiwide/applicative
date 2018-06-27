@@ -8,6 +8,7 @@
 ;   You must not remove this notice, or any other, from this software.
 
 (ns biiwide.applicative.data-test
+  (:refer-clojure :exclude [constantly])
   (:require [biiwide.applicative.data :refer :all]
             [clojure.test :refer :all]
             [clojure.test.check.clojure-test :refer [defspec]]
@@ -53,7 +54,7 @@
 
 (defspec optimized-constants 200
   (for-all [constant-val constants]
-    (constant? (->transform constant-val))))
+    (constant? (transformer constant-val))))
 
 (defspec optimized-nils 100
   (for-all [empty-v (g/recursive-gen
@@ -61,12 +62,12 @@
                              (let [collf (rand-nth [g/vector g/list #(g/map g/string %)])]
                                (collf t)))
                            (g/elements [nil]))]
-    (always-nil? (->transform empty-v))))
+    (always-nil? (transformer empty-v))))
 
-(deftest test->transform
+(deftest test-transformer
   (are [expr value expected]
     (= expected
-      ((->transform expr) value))
+      ((transformer expr) value))
 
     :a   {:b "B"} nil
     :a   nil      nil
@@ -97,6 +98,10 @@
     [:first :second :last]
     {:first "first" :second "second" :last "last"}
     "last"
+
+    []
+    "abc"
+    true
 
     [1 2 3]
     nil
@@ -130,6 +135,10 @@
 (deftest test-ora
   (are [exprs v expected]
     (= expected ((apply ora exprs) v))
+
+    []
+    "foo"
+    nil
 
     [:first :second :last]
     {:first "first" :second "second" :last "last"}
@@ -216,6 +225,12 @@
     (->a :parent :child) {} nil
     (->a :outer {:rewrap identity}) {:outer "thing"} {:rewrap "thing"}
     ))
+
+(deftest test-compose-some-ltr
+  (are [expr data expected]
+    (= expected (expr data))
+
+    (some->a inc (constantly nil) inc) 2 nil))
 
 (deftest test-something?
   (are [pred v]
@@ -314,26 +329,144 @@
         (is (>= 3 (count m')))
         (is (= (not-empty (select-keys m' keys)) m'))))))
 
-(defspec withouta-spec
+
+#_(defspec withouta-spec
   (let [keys ["one" "two" "three"]
         wf (apply withouta keys)
         k-gens (map g/return keys)
-        get-all-keys (->transform (map geta keys))]
+        get-all-keys (transformer (map geta keys))]
     (for-all [m (g/map
                   (g/one-of (cons g/string-alphanumeric k-gens))
                   g/int)]
       (let [m' (wf m)]
         (is (nil? (get-all-keys m')))))))
 
+
 (defspec betweena-spec 200
-  (let [lower -4
-        upper 5
-        bf (betweena upper lower identity)]
-    (for-all [x (g/one-of [g/int g/nat g/ratio
+  (let [gen-number (g/one-of [g/int g/nat g/ratio])]
+    (for-all [a gen-number
+              b gen-number
+              x (g/one-of [g/int g/nat g/ratio
                            g/string-alphanumeric
                            g/keyword g/boolean
                            g/any-printable])]
-      (let [n (bf x)]
-        (is (number? n))
-        (is (<= lower n))
-        (is (>= upper n))))))
+      (let [lower (min a b)
+            upper (max a b)
+            bf (betweena a b identity)
+            safe-n (bf x)]
+        (printf "A: %s  B: %s\n" a b)
+        (is (number? safe-n))
+        (is (<= lower safe-n))
+        (is (>= upper safe-n))))))
+
+(deftest test-+a
+  (are [exprs value expected]
+    (= expected ((apply +a exprs) value))
+
+    [inc inc dec] 3 10
+    ))
+
+(deftest test-*a
+  (are [exprs value expected]
+    (= expected ((apply *a exprs) value))
+
+    [inc dec inc] 3 32
+    ))
+
+(deftest test--a
+  (are [exprs value expected]
+    (= expected ((apply -a exprs) value))
+
+    [inc dec] 9 2
+    [inc dec] -2 2
+    [inc dec 2] 20 0
+
+    [dec inc] 7 -2
+    ))
+
+#_(deftest test-unary-lift
+  (are [lifted value expected]
+    (= expected (lifted value))
+
+    (unary-lift inc) 2 1
+    (unary-lift inc dec) 3 3
+    (unary-lift 'even? (*a 2)) 5 true
+    ))
+
+(let [n 100000
+      v ["abcd"]
+      first (geta 0)
+      ks [:ab :bc :cd :de :ef :fg :gh :hi :ij]
+      base {:ab first :bc first :cd first
+            :de first :ef first :fg first
+            :gh first :hi first :ij first}
+      always-true (transformer true)
+      fn9 (transformer base)
+      fn6 (transformer (dissoc base [:gh :hi :ij]))
+      fn3 (transformer (select-keys base [:ab :bc :cd]))
+      f9 (transformer-with-nils base)
+      f6 (transformer-with-nils (dissoc base [:gh :hi :ij]))
+      f3 (transformer-with-nils (select-keys base [:ab :bc :cd]))
+      ]
+  (are [label snippet]
+       (do (println label)
+           (time
+             (dotimes [foo n]
+               snippet))
+           (println "")
+           true)
+
+       "Just true"
+       true
+
+       "Constantly true"
+       always-true
+
+       "9 keys: (hash-map ...)"
+       (hash-map :ab v :bc v :cd v
+                 :de v :ef v :fg v
+                 :gh v :hi v :ij v)
+
+       "9 keys: (hash-map key (f value) ...)"
+       (apply hash-map
+              [:ab (first v) :bc (first v) :cd (first v)
+               :de (first v) :ef (first v) :fg (first v)
+               :gh (first v) :hi (first v) :ij (first v)])
+
+       "9 keys: nil-pruning applicative"
+       (fn9 v)
+
+       "9 keys: plain applicative"
+       (f9 v)
+
+       "6 keys: (hash-map ...)"
+       (hash-map :ab v :bc v :cd v
+                 :de v :ef v :fg v)
+
+       "6 keys: (hash-map key (f value) ...)"
+       (apply hash-map
+              [:ab (first v) :bc (first v) :cd (first v)
+               :de (first v) :ef (first v) :fg (first v)])
+
+       "6 keys: nil-pruning applicative"
+       (fn6 v)
+
+       "6 keys: plain applicative"
+       (f6 v)
+
+       "3 keys: (hash-map ...)"
+       (hash-map :ab v :bc v :cd v)
+
+       "3 keys: (hash-map key (f value) ...)"
+       (apply hash-map [:ab (first v) :bc (first v) :cd (first v)])
+
+       "3 keys: nil-pruning applicative"
+       (fn3 v)
+
+       "3 keys: plain applicative"
+       (f3 v)
+
+       "9 zipmap"
+       (zipmap ks (map first (repeat v)))
+       ))
+
