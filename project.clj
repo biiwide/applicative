@@ -1,4 +1,4 @@
-(defproject biiwide/applicative "0.0.1"
+(defproject biiwide/applicative "0.0.2-SNAPSHOT"
 
   :description "Applicative programming and data transformations"
 
