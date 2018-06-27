@@ -7,9 +7,9 @@
 ;   the terms of this license.
 ;   You must not remove this notice, or any other, from this software.
 
-(ns biiwide.applicative.data-test
+(ns biiwide.applicative.alpha.data-test
   (:refer-clojure :exclude [constantly])
-  (:require [biiwide.applicative.data :refer :all]
+  (:require [biiwide.applicative.alpha.data :refer :all]
             [clojure.test :refer :all]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as g :refer [one-of]]
