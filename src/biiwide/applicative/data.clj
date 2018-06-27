@@ -241,7 +241,7 @@ Example:
                 (eval `(fn [~'arg]
                          (~s ~@(map #(list % 'arg) f's)))))))})
 
-(defn lift
+(defn- lift
   "Lift a function of two or more arguments into a function
 of one argument where each argument to the original function is
 obtained by applying the single argument to each argument-expression.
